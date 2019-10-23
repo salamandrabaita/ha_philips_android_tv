@@ -255,7 +255,7 @@ class PhilipsTV(MediaPlayerDevice):
         self._min_volume = self._tv.min_volume
         self._max_volume = self._tv.max_volume
         self._source_list = self._tv.app_source_list + self._tv.channel_source_list
-        self._source = self._tv.app_name + ' ' + self._tv.channel_name
+        self._source = self._tv.app_name + self._tv.channel_name
         self._channel_id = self._tv.channel_id
         self._channel_name = self._tv.channel_name
         self._media_cont_type = self._tv.media_content_type
@@ -368,11 +368,11 @@ class PhilipsTVBase(object):
                     if r:
                         self.channel_id = r.get('channel', {}).get('preset', 'N/A')
                         self.channel_name = r.get('channel', {}).get('name', 'N/A')
-                        self.app_name = '📺'
+                        self.app_name = '# '
                     else:
                         self.channel_name = 'N/A'
                         self.channel_id = 'N/A'
-                        self.app_name = '📺'
+                        self.app_name = '# '
                 else:
                     self.media_content_type = 'app'
                     if pkg_name == 'com.google.android.leanbacklauncher':
@@ -380,7 +380,7 @@ class PhilipsTVBase(object):
                         self.channel_name = 'Home'
                         self.media_content_type = ''
                     elif pkg_name == 'org.droidtv.nettvbrowser':
-                        self.app_name = '📱'
+                        self.app_name = ''
                         self.channel_name = 'Net TV Browser'
                     elif pkg_name == 'org.droidtv.settings':
                         self.app_name = self.class_name_to_app.get(class_name, {}).get('label', class_name) if class_name != 'NA' else ''
@@ -388,7 +388,7 @@ class PhilipsTVBase(object):
                     else:
                         app = self.class_name_to_app.get(class_name, {})
                         if 'label' in app:
-                            self.app_name = '📱'
+                            self.app_name = ''
                             self.channel_name = app['label']
                         else:
                             self.app_name = class_name
@@ -400,7 +400,7 @@ class PhilipsTVBase(object):
             self.channels = dict(sorted({chn['name']: chn
                                          for chn in r['Channel']}.items(),
                                          key=lambda a: a[0].upper()))
-            self.channel_source_list = ['📺 ' + channelName
+            self.channel_source_list = ['# ' + channelName
                                         for channelName in self.channels.keys()]
 
     # Filtering out favorite channels here
@@ -420,7 +420,7 @@ class PhilipsTVBase(object):
             fav_channel = {key: all_channels[key] for key in ccids}
             self.channel_source_list = []
             for fav_channel_ccid, fav_channel_ccinfo in fav_channel.items():
-                self.channel_source_list.append('📺 ' +
+                self.channel_source_list.append('# ' +
                                                 fav_channel_ccinfo['name'])
             self.channel_source_list.sort()
         else:
@@ -435,15 +435,12 @@ class PhilipsTVBase(object):
             self.applications = dict(sorted({app['label']: app
                                              for app in r['applications']}.items(),
                                              key=lambda a: a[0].upper()))
-            self.app_source_list = ['📱 ' + appLabel
+            self.app_source_list = [appLabel
                                     for appLabel in self.applications.keys()]
 
     def change_source(self, source_label):
         if source_label:
-            if source_label.startswith('📱'):
-                app = self.applications[source_label[2:]]
-                self._post_req('activities/launch', app)
-            elif source_label.startswith('📺'):
+            if source_label.startswith('# '):
                 chn = self.channels[source_label[2:]]
                 data = {
                     'channel': {
@@ -457,6 +454,9 @@ class PhilipsTVBase(object):
                     }
                 }
                 self._post_req('activities/tv', data)
+            else:
+                app = self.applications[source_label]
+                self._post_req('activities/launch', app)
 
     def get_state(self):
         r = self._get_req('powerstate')
