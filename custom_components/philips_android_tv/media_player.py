@@ -7,7 +7,7 @@ import voluptuous as vol
 
 from datetime import timedelta
 from homeassistant.components.media_player import (
-    MediaPlayerDevice, PLATFORM_SCHEMA
+    MediaPlayerEntity, PLATFORM_SCHEMA
 )
 from homeassistant.components.media_player.const import (
     SUPPORT_STOP, SUPPORT_PLAY, SUPPORT_NEXT_TRACK, SUPPORT_PAUSE,
@@ -32,6 +32,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 _LOGGER = logging.getLogger(__name__)
 
 CONF_FAV_ONLY = 'favorite_channels_only'
+CONF_HIDE_CHANNELS = 'hide_channels'
+CONF_WOL_BROADCAST_IP = 'wol_broadcast_ip'
 
 MIN_TIME_BETWEEN_UPDATES = timedelta(seconds=5)
 
@@ -50,6 +52,7 @@ DEFAULT_NAME = 'Philips TV'
 BASE_URL = 'https://{0}:1926/6/{1}'
 TIMEOUT = 5.0
 CONNFAILCOUNT = 5
+DEFAULT_WOL_BROADCAST_IP = '255.255.255.255'
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_HOST, default=DEFAULT_HOST): cv.string,
@@ -57,7 +60,9 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_USERNAME, default=DEFAULT_USER): cv.string,
     vol.Required(CONF_PASSWORD, default=DEFAULT_PASS): cv.string,
     vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
-    vol.Optional(CONF_FAV_ONLY, default=False): cv.boolean
+    vol.Optional(CONF_FAV_ONLY, default=False): cv.boolean,
+    vol.Optional(CONF_HIDE_CHANNELS, default=False): cv.boolean,
+    vol.Optional(CONF_WOL_BROADCAST_IP, default=DEFAULT_WOL_BROADCAST_IP): cv.string
 })
 
 # pylint: disable=unused-argument
@@ -69,14 +74,16 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
     user = config.get(CONF_USERNAME)
     password = config.get(CONF_PASSWORD)
     favorite_only = config.get(CONF_FAV_ONLY)
-    tvapi = PhilipsTVBase(host, user, password, favorite_only)
-    add_devices([PhilipsTV(tvapi, name, mac)])
+    hide_channels = config.get(CONF_HIDE_CHANNELS)
+    wol_broadcast_ip = config.get(CONF_WOL_BROADCAST_IP)
+    tvapi = PhilipsTVBase(host, user, password, favorite_only, hide_channels)
+    add_devices([PhilipsTV(tvapi, name, mac, wol_broadcast_ip)])
 
 
-class PhilipsTV(MediaPlayerDevice):
+class PhilipsTV(MediaPlayerEntity):
     """Representation of a 2016+ Philips TV exposing the JointSpace API."""
 
-    def __init__(self, tv, name, mac):
+    def __init__(self, tv, name, mac, wol_broadcast_ip):
         """Initialize the TV."""
         import wakeonlan
         self._tv = tv
@@ -84,6 +91,7 @@ class PhilipsTV(MediaPlayerDevice):
         self._name = name
         self._mac = mac
         self._wol = wakeonlan
+        self._wol_broadcast_ip = wol_broadcast_ip
         self._state = STATE_UNKNOWN
         self._on = False
         self._api_online = False
@@ -122,7 +130,10 @@ class PhilipsTV(MediaPlayerDevice):
     @property
     def volume_level(self):
         """Volume level of the media player (0..1)."""
-        return self._volume / self._max_volume
+        if self._volume is None or self._max_volume is None:
+            return 0
+        else:
+            return self._volume / self._max_volume
 
     @property
     def is_volume_muted(self):
@@ -144,6 +155,7 @@ class PhilipsTV(MediaPlayerDevice):
             _LOGGER.info("Sending WOL [try #%s]", i)
             self.wol()
             time.sleep(3)
+            self.update()
             self._tv.set_power_state('On')
             i += 1
         if not self._api_online:
@@ -246,7 +258,7 @@ class PhilipsTV(MediaPlayerDevice):
         return self._app_name
 
     def wol(self):
-        self._wol.send_magic_packet(self._mac)
+        self._wol.send_magic_packet(self._mac, ip_address=self._wol_broadcast_ip)
 
     @Throttle(MIN_TIME_BETWEEN_UPDATES)
     def update(self):
@@ -271,11 +283,14 @@ class PhilipsTV(MediaPlayerDevice):
             elif self._media_cont_type == 'app':
                 self._state = STATE_IDLE
         else:
-            self._state = STATE_OFF
+            if self._api_online:
+                self._state = STATE_OFF
+            else:
+                self._state = STATE_UNKNOWN
 
 
 class PhilipsTVBase(object):
-    def __init__(self, host, user, password, favorite_only):
+    def __init__(self, host, user, password, favorite_only, hide_channels):
         self._host = host
         self._user = user
         self._password = password
@@ -287,6 +302,7 @@ class PhilipsTVBase(object):
         self.volume = 0
         self.muted = False
         self.favorite_only = favorite_only
+        self.hide_channels = hide_channels
         self.applications = {}
         self.app_source_list = []
         self.class_name_to_app = {}
@@ -348,13 +364,15 @@ class PhilipsTVBase(object):
 
     def update(self):
         self.get_state()
-        self.get_applications()
-        if self.favorite_only:
-            self.get_favorite_channels()
-        else:
-            self.get_channels()
-        self.get_audiodata()
-        self.get_channel()
+        if self.api_online:
+            self.get_applications()
+            if not self.hide_channels:
+                if self.favorite_only:
+                    self.get_favorite_channels()
+                else:
+                    self.get_channels()
+            self.get_audiodata()
+            self.get_channel()
 
     def get_channel(self):
         if self.on:

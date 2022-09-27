@@ -1,3 +1,11 @@
+## Deprecated by official component, which has API v6 support now
+
+https://www.home-assistant.io/integrations/philips_js/
+Made possible by this PR: https://github.com/home-assistant/core/pull/46422 by elupus. Big thanks for making my dreams come true.
+
+If something is missing, that this component has and the official has not, please tell me.
+We might also get HDMI switch support in the future (it is not working for my TV, but it is already working for other TVs)
+
 # Home Assistant Philips TV (2016+) media player component
 Home Assistant custom component for the newer (2016+) Philips Android TVs
 
@@ -84,6 +92,7 @@ Key | Type | Required | Description
 `host` | `string` | `True` | The IP of the TV
 `mac` | `string` | `False` | The MAC of the TV (Wifi MAC required for WoWLAN)
 `favorite_channels_only` | `boolean` | `False` | Enable/disable only showing the favorite channels
+`wol_broadcast_ip` | `string` | `False` | Change the brodcast IP address for the WOL packet
 
 ## Special requirements for turning the TV back on from Standby
 Essentially wake-on-lan wakes up the API part of the TV. Then the TV is able to receive a command to set the power state to on.
@@ -94,6 +103,7 @@ And add the Wifi MAC address to your config.
 
 I believe this can also work using the LAN MAC, but I am running it currently with the WoWLAN feature.
 
+Note - you can install Wakelock Revamped (https://github.com/d4rken/wakelock-revamp/releases/tag/v3.2.0), or from Play Store (https://play.google.com/store/apps/details?id=eu.thedarken.wldonate&hl=en) to your Philips TV you can enable the `Processor` amd `Screen dimmed` wakelocks and have it start on boot to keep your TV awake at all times, even when you press the power button. The TV should use more energy than in regular sleep mode but should be always available.
 
 ## Contribution
 I am always happy to see PRs and will merge or comment on them.
